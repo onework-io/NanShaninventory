@@ -1,3 +1,16 @@
+// IndexedDB stores local drafts; submitted responses are stored in server SQLite.
+const inventoryDB = new Promise((resolve,reject)=>{
+ const req=indexedDB.open('nanshan-inventory',1);
+ req.onupgradeneeded=()=>{
+  const db=req.result, tx=req.transaction;
+  if(!db.objectStoreNames.contains('responses'))db.createObjectStore('responses',{keyPath:'id'});
+  if(!db.objectStoreNames.contains('drafts'))db.createObjectStore('drafts');
+  try{const old=JSON.parse(localStorage.getItem('nanshan-preview-responses')||'[]');if(Array.isArray(old))for(const row of old)if(row&&row.id)tx.objectStore('responses').put(row)}catch(e){console.warn('舊版填答未能匯入；原資料仍保留在瀏覽器',e)}
+  try{for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key&&key.startsWith('nanshan-survey-draft-')){try{tx.objectStore('drafts').put(JSON.parse(localStorage.getItem(key)),key)}catch(e){console.warn('舊版草稿未能匯入',e)}}}}catch(e){console.warn('無法讀取舊版草稿',e)}
+ };
+ req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error('無法開啟 IndexedDB'));req.onblocked=()=>reject(new Error('IndexedDB 開啟遭到阻擋'));
+});
+async function dbOperation(store,mode,action){const db=await inventoryDB;return new Promise((resolve,reject)=>{const tx=db.transaction(store,mode);let result;try{const req=action(tx.objectStore(store));req.onsuccess=()=>{result=req.result};req.onerror=()=>reject(req.error)}catch(e){reject(e);return}tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(tx.error||new Error('儲存交易失敗'));tx.onerror=()=>reject(tx.error||new Error('儲存交易失敗'))})}
 const systemSteps=[
 {title:'系統與聯絡窗口',hint:'先確認這份調查所屬的大樓、系統及負責單位。',fields:[['building','大樓','select','南山廣場|A21|A26|其他',true],['systemCategory','子系統類別','select','中央監控 BA／BMS|電力監控及電表|消防／火警|給排水|照明監控|電梯／手扶梯|空調|通風換氣|環境品質|氣體偵測|對講|緊急求救|門禁|防盜保全|攝影機監視 CCTV|停車管理|電動車充電樁|其他子系統|3D 視覺化／BIM',true],['system','實際系統名稱','text','例如：中央監控、電梯監控；其他請註明',true],['status','系統現況','select','使用中|未設置|規劃中|停用|待確認'],['brand','品牌、產品與版本','text','例如：系統品牌、型號或版本'],['department','南山負責部門及窗口','text','部門、姓名或聯絡方式'],['vendor','原廠／系統商／維護商','text','公司名稱與角色'],['contact','廠商聯絡窗口','text','姓名與聯絡方式'],['scope','系統服務範圍及現有問題','textarea','涵蓋樓層、下游子系統、設備、用途、運作問題或停用原因']]},
 {title:'通訊方式與資料介面',hint:'若不清楚專有名詞，請填「待確認」並交由原廠確認。',fields:[['thirdparty','第三方介接可行性','select','可提供|不可提供|待確認'],['protocol','已知介接方式','text','例如 API、BACnet、Modbus、OPC UA、MQTT、CSV'],['source','資料來源位置','text','例如平台、控制器、閘道；不確定請填待確認'],['data','可提供資料內容','textarea','例如運轉狀態、讀值、告警、歷史紀錄'],['frequency','更新頻率與歷史資料','textarea','即時、定時、手動匯出；可提供多久的歷史資料'],['licensing','授權、費用及限制','textarea','是否需原廠開通、授權、模組或介接費用'],['testing','測試環境及介接限制','textarea','是否可提供只讀測試環境、系統版本或其他限制'],['systemControllers','控制器、閘道與通訊設備','textarea','是否使用通訊閘道、DDC、PLC、數位電表或通訊模組？請列品牌、型號及已知協定；未知可待確認。'],['systemTopology','系統架構及下游設備','textarea','例如管理平台→閘道／DDC／PLC→現場設備；請說明中間設備及連接關係。'],['systemRemote','遠端維護方式及限制','textarea','是否支援遠端維護、由哪家廠商操作、須經哪些資安審核；不要提供連線帳密。']]},
